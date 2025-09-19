@@ -7,7 +7,9 @@ import (
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
 	"io"
-	"encoding/base64"
+	"path/filepath"
+	"os"
+	"strings"
 )
 
 func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Request) {
@@ -52,13 +54,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	//read all image data into a byte slice
-	data, err := io.ReadAll(file)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "unable to read file", err)
-		return
-	}
-
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "unable to get video data", err)
@@ -71,12 +66,26 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	//create data URL
-	fileData := base64.StdEncoding.EncodeToString(data)
-	dataURL := fmt.Sprintf("data:%v;base64,%v", mediaType, fileData)
+	//store the file into file system in /assets/<videoID>.<file_extension>
+	fileExt := strings.Split(mediaType, "/") // returns ["image", "png"]
+	filename := fmt.Sprintf("%v.%v", videoIDString, fileExt[1])
+	filePath := filepath.Join(cfg.assetsRoot, filename)
+	newFile, err := os.Create(filePath)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "error creating file", err)
+		return
+	}
+
+	if _, err := io.Copy(newFile, file); err != nil {
+		respondWithError(w, http.StatusBadRequest, "error copying file to file system", err)
+		return
+	}
+
+	//create thumbnail URL
+	thumbnailURL := fmt.Sprintf("http://localhost:%v/assets/%v.%v", cfg.port, videoIDString, fileExt[1])
 
 	//update video metadata to the new thumbnail URL
-	video.ThumbnailURL = &dataURL
+	video.ThumbnailURL = &thumbnailURL
 
 	//update the video record in the database
 	err = cfg.db.UpdateVideo(video)
