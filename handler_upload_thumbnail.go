@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"os"
 	"strings"
+	"mime"
+	"crypto/rand"
+	"encoding/base64"
 )
 
 func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Request) {
@@ -67,8 +70,23 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	//store the file into file system in /assets/<videoID>.<file_extension>
-	fileExt := strings.Split(mediaType, "/") // returns ["image", "png"]
-	filename := fmt.Sprintf("%v.%v", videoIDString, fileExt[1])
+	mimeType, _, err := mime.ParseMediaType(mediaType)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "error getting mime type", err)
+		return
+	}
+	if mimeType != "image/jpeg" && mimeType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "file format not supported", nil)
+		return
+	}
+	fileExt := strings.Split(mimeType, "/") // returns ["image", "png"]
+
+	//generate unique name for the thumbnail
+	thumbnailImgID := make([]byte, 32)
+	rand.Read(thumbnailImgID)
+	encoded := base64.RawURLEncoding.EncodeToString(thumbnailImgID)
+
+	filename := fmt.Sprintf("%v.%v", encoded, fileExt[1])
 	filePath := filepath.Join(cfg.assetsRoot, filename)
 	newFile, err := os.Create(filePath)
 	if err != nil {
@@ -82,7 +100,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 
 	//create thumbnail URL
-	thumbnailURL := fmt.Sprintf("http://localhost:%v/assets/%v.%v", cfg.port, videoIDString, fileExt[1])
+	thumbnailURL := fmt.Sprintf("http://localhost:%v/assets/%v.%v", cfg.port, encoded, fileExt[1])
 
 	//update video metadata to the new thumbnail URL
 	video.ThumbnailURL = &thumbnailURL
