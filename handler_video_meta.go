@@ -7,6 +7,7 @@ import (
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 	"github.com/google/uuid"
+	"log"
 )
 
 func (cfg *apiConfig) handlerVideoMetaCreate(w http.ResponseWriter, r *http.Request) {
@@ -95,7 +96,14 @@ func (cfg *apiConfig) handlerVideoGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, video)
+	//generate video's presigned URL
+	videoPresigned, err := cfg.dbVideoToSignedVideo(video)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "problem getting presigned video", err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, videoPresigned)
 }
 
 func (cfg *apiConfig) handlerVideosRetrieve(w http.ResponseWriter, r *http.Request) {
@@ -114,6 +122,16 @@ func (cfg *apiConfig) handlerVideosRetrieve(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve videos", err)
 		return
+	}
+
+	for i, video := range videos {
+		//generate video's presigned URL
+		videoPresigned, err := cfg.dbVideoToSignedVideo(video)
+		if err != nil {
+			log.Printf("skip video %v: %v", videos[i].ID, err)
+			continue
+		}
+		videos[i] = videoPresigned
 	}
 
 	respondWithJSON(w, http.StatusOK, videos)
